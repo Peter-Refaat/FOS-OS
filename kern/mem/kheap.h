@@ -2,7 +2,7 @@
 #define FOS_KERN_KHEAP_H_
 
 #ifndef FOS_KERNEL
-# error "This is a FOS kernel header; user programs should not #include it"
+#error "This is a FOS kernel header; user programs should not #include it"
 #endif
 
 #include <inc/types.h>
@@ -16,11 +16,18 @@
 #define KHP_PLACE_NEXTFIT 	0x3
 #define KHP_PLACE_WORSTFIT 	0x4
 #define KHP_PLACE_CUSTOMFIT 0x5
+#define GET_KHEAP_PAGE_OF(va) (((va) - kheapPageAllocStart) >> PTXSHIFT)
+
+#define FASTKHEAP 1
+
+
 
 //TODO: [PROJECT'25.GM#2] KERNEL HEAP - #0 Page Alloc Limits [GIVEN]
 uint32 kheapPageAllocStart ;
 uint32 kheapPageAllocBreak ;
 uint32 kheapPlacementStrategy;
+
+
 
 /*2025*/ //Replaced by setter & getter function
 static inline void set_kheap_strategy(uint32 strategy){kheapPlacementStrategy = strategy;}

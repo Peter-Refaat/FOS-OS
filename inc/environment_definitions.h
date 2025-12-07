@@ -192,6 +192,7 @@ struct Env {
 	//2020
 	uint32 nPageIn, nPageOut, nNewPageAdded;
 	uint32 nClocks ;
+	int64 start_waiting_ticks;
 
 };
 

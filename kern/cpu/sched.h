@@ -33,6 +33,7 @@ struct
 	//RR ONLY
 	struct Env_Queue env_ready_queues[1];// Ready queue(s) for the RR
 #endif
+	int64 starv_thresh;
 }ProcessQueues;
 
 #if USE_KHEAP

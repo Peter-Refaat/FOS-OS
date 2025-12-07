@@ -225,10 +225,24 @@ void sched_init_PRIRR(uint8 numOfPriorities, uint8 quantum, uint32 starvThresh)
 		//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #2 sched_init_PRIRR
 		//Your code is here
 		//Comment the following line
-		panic("sched_init_PRIRR() is not implemented yet...!!");
-
-
-
+//		panic("sched_init_PRIRR() is not implemented yet...!!");
+#if USE_KHEAP
+		acquire_kspinlock(&(ProcessQueues.qlock));
+//		cprintf("I'm in sched_init_PRIRR, numOfPriorities = %d, quantum = %d, starvThresh = %d\n", numOfPriorities, quantum, starvThresh);
+		ProcessQueues.starv_thresh = starvThresh;
+		num_of_ready_queues = numOfPriorities;
+		ProcessQueues.env_ready_queues = kmalloc(num_of_ready_queues * sizeof(struct Env_Queue));
+		quantums = kmalloc(1 * sizeof(uint8));
+		quantums[0] = quantum;
+		for (int i = 0; i < num_of_ready_queues; ++i)
+		{
+			init_queue(&(ProcessQueues.env_ready_queues[i]));
+		}
+		init_queue(&(ProcessQueues.env_new_queue));
+		init_queue(&(ProcessQueues.env_exit_queue));
+		kclock_set_quantum(quantum);
+		release_kspinlock(&(ProcessQueues.qlock));
+#endif
 	}
 	//=========================================
 	//DON'T CHANGE THESE LINES=================
@@ -313,7 +327,30 @@ struct Env* fos_scheduler_PRIRR()
 	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #3 fos_scheduler_PRIRR
 	//Your code is here
 	//Comment the following line
-	panic("fos_scheduler_PRIRR() is not implemented yet...!!");
+//	panic("fos_scheduler_PRIRR() is not implemented yet...!!");
+#if USE_KHEAP
+//	cprintf("I'm in the scheduler\n");
+	struct Env* cur_env = get_cpu_proc();
+	if(cur_env != NULL)
+	{
+		sched_insert_ready(cur_env);
+	}
+	struct Env* nxt_env = NULL;
+	for(int i = 0 ; i < num_of_ready_queues ; ++i)
+	{
+		if(LIST_EMPTY(&(ProcessQueues.env_ready_queues[i])))
+			continue;
+
+		nxt_env = dequeue(&(ProcessQueues.env_ready_queues[i]));
+//		nxt_env->start_waiting_ticks = ticks;
+		break;
+	}
+//	cprintf("kclock is setting quantum to %d\n" , quantums[0]);
+	kclock_set_quantum(quantums[0]);
+	return nxt_env;
+#else
+	panic("Need USE_KHEAP to be enabled!");
+#endif
 }
 
 //========================================
@@ -327,14 +364,41 @@ void clock_interrupt_handler(struct Trapframe* tf)
 		//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #4 clock_interrupt_handler
 		//Your code is here
 		//Comment the following line
-		panic("clock_interrupt_handler() is not implemented yet...!!");
+//		panic("clock_interrupt_handler() is not implemented yet...!!");
+#if USE_KHEAP
+		acquire_kspinlock(&(ProcessQueues.qlock));
+		int64 current_tick = timer_ticks();
+//		cprintf("Current Tick: %d\n",current_tick);
+		for(int i = 1 ; i < num_of_ready_queues ; ++i)
+		{
+			if (LIST_EMPTY(&(ProcessQueues.env_ready_queues[i])))
+				continue;
 
-
-
+			struct Env* cur_env = NULL;
+			LIST_FOREACH_SAFE(cur_env,&(ProcessQueues.env_ready_queues[i]),Env)
+			{
+//				cprintf("Timer tick: %d\n",timer_ticks());
+				int64 wait_time = timer_ticks() - cur_env->start_waiting_ticks;
+//				cprintf("Current Process Info:\n");
+//				cprintf("ID: %d, Priority: %d\n, start_waiting_tick: %d\n",cur_env->env_id,cur_env->priority,cur_env->start_waiting_ticks);
+//				cprintf("Wait Time: %d\n",wait_time);
+				if(wait_time > ProcessQueues.starv_thresh)
+				{
+//					cprintf("Wait exceeded the starvation threshold!!\n");
+					LIST_REMOVE(&(ProcessQueues.env_ready_queues[i]), cur_env);
+					cur_env->priority = cur_env->priority - 1;
+					sched_insert_ready(cur_env);
+				}
+//				cprintf("==================================\n");
+			}
+		}
+		kclock_set_quantum(quantums[0]);
+		release_kspinlock(&ProcessQueues.qlock);
+#endif
 	}
 
 	/********DON'T CHANGE THESE LINES***********/
-	ticks++ ;
+	 ticks++ ;
 	struct Env* p = get_cpu_proc();
 	if (p == NULL)
 	{
@@ -367,6 +431,22 @@ void update_WS_time_stamps()
 	//TODO: [PROJECT'25.IM#6] FAULT HANDLER II - #1 update_WS_time_stamps
 	//Your code is here
 	//Comment the following line
-	panic("update_WS_time_stamps is not implemented yet...!!");
+//	panic("update_WS_time_stamps is not implemented yet...!!");
+#if USE_KHEAP
+
+//    cprintf("entered time stamp fn\n");
+
+    struct Env* e = get_cpu_proc();
+    struct WorkingSetElement* current_element=LIST_FIRST(&(e->page_WS_list));
+    while (current_element != NULL){
+        current_element->time_stamp>>=1;
+        int perms  = pt_get_page_permissions(e->env_page_directory ,current_element->virtual_address );
+        if(perms & PERM_USED){
+            current_element->time_stamp|=(0x80000000);
+            pt_set_page_permissions(e->env_page_directory,current_element->virtual_address , 0 , PERM_USED );
+        }
+        current_element = LIST_NEXT(current_element);
+    }
+#endif
 
 }

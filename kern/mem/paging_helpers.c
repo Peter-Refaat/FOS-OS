@@ -53,7 +53,17 @@ inline int pt_get_page_permissions(uint32* directory, uint32 virtual_address )
 {
 	//TODO: PRACTICE: fill this function.
 	//Comment the following line
-	panic("pt_get_page_permissions() is not implemented yet!");
+	//panic("pt_get_page_permissions() is not implemented yet!");
+
+	uint32* ptr_page_table ;
+	int ret = get_page_table(directory, virtual_address, &ptr_page_table);
+	if(ptr_page_table == NULL) {
+		cprintf("pt_get_page_permissions : virtual address %x has no page table\n", virtual_address);
+		return -1;
+	}
+	else {
+		return ptr_page_table[PTX(virtual_address)] & 0xFFF;
+	}
 }
 
 //===============================
@@ -63,11 +73,26 @@ inline int pt_get_page_permissions(uint32* directory, uint32 virtual_address )
 //If the page table not exist, return -1
 //It's expected that the page table already exist. If not, the function should panic
 //REMEMBER: to invalidate the TLB cache
+//===============================
+//3) CLEAR PAGE TABLE ENTRY
+//===============================
 inline void pt_clear_page_table_entry(uint32* directory, uint32 virtual_address)
 {
-	//TODO: PRACTICE: fill this function.
-	//Comment the following line
-	panic("pt_clear_page_table_entry() is not implemented yet!");
+    // Get the page table
+    uint32* ptr_page_table = NULL;
+    int ret = get_page_table(directory, virtual_address, &ptr_page_table);
+
+    // The table should exist - if not, panic
+    if (ptr_page_table == NULL) {
+        cprintf("va=%x not exist and has no page table\n", virtual_address);
+        panic("pt_clear_page_table_entry() called with invalid virtual address. The corresponding page table doesn't exist\n");
+    }
+
+    // Clear the entire page table entry (set to 0)
+    ptr_page_table[PTX(virtual_address)] = 0;
+
+    // Invalidate TLB cache for this address
+    tlb_invalidate(directory, (void*)virtual_address);
 }
 
 /***********************************************************************************************/
@@ -141,6 +166,7 @@ inline int alloc_page(uint32* directory, uint32 va, uint32 perms, bool set_to_ze
 		if (ret == E_NO_MEM) {
 			return E_NO_MEM;
 		}
+		ptr_fi->virt = ROUNDDOWN(va,PAGE_SIZE);
 		ret = map_frame(directory, ptr_fi, va, perms);
 		if (ret == E_NO_MEM) {
 			free_frame(ptr_fi);

@@ -42,6 +42,7 @@ void sharing_init()
 struct Share* find_share(int32 ownerID, char* name)
 {
 #if USE_KHEAP
+
 	struct Share * ret = NULL;
 	bool wasHeld = holding_kspinlock(&(AllShares.shareslock));
 	if (!wasHeld)
@@ -107,29 +108,120 @@ struct Share* alloc_share(int32 ownerID, char* shareName, uint32 size, uint8 isW
 	//TODO: [PROJECT'25.IM#3] SHARED MEMORY - #1 alloc_share
 	//Your code is here
 	//Comment the following line
-	panic("alloc_share() is not implemented yet...!!");
+	//panic("alloc_share() is not implemented yet...!!");
+
+	struct Share *sharedObject = kmalloc(sizeof(struct Share));
+	if (sharedObject == NULL)
+			return NULL; // allocation fails
+
+	sharedObject->ownerID = ownerID;
+	sharedObject->size = size;
+	sharedObject->isWritable = isWritable;
+	sharedObject->references = 1;
+	strncpy(sharedObject->name, shareName, 64);
+
+	//uint32 mask = ~(1 << 31);
+
+	sharedObject->ID = 0; // 0 for now untill smalloc is implemented
+
+
+	uint32 numOfPages = ROUNDUP(size,PAGE_SIZE) / PAGE_SIZE;
+	sharedObject->framesStorage = kmalloc(numOfPages * sizeof(struct FrameInfo *)); // allocate framesStorage array
+
+	if (sharedObject->framesStorage == NULL)
+		{
+			kfree(sharedObject); // undo allocation
+			return NULL;
+		}
+
+	for(int i =0; i < numOfPages; i++){
+		sharedObject->framesStorage[i] = 0; // Initialize it by ZEROs
+	}
+
+	return sharedObject;
+
+
 }
 
 
 //=========================
 // [4] Create Share Object:
 //=========================
-int create_shared_object(int32 ownerID, char* shareName, uint32 size, uint8 isWritable, void* virtual_address)
+int create_shared_object(int32 ownerID, char* shareName, uint32 size,uint8 isWritable, void* virtual_address)
 {
-	//TODO: [PROJECT'25.IM#3] SHARED MEMORY - #3 create_shared_object
-	//Your code is here
-	//Comment the following line
-	panic("create_shared_object() is not implemented yet...!!");
+	//TODO: [PROJECT'25.IM#3] SHARED MEMORY - #5 get_shared_object
+		//Your code is here
+		//Comment the following line
+		//panic("create_shared_object() is not implemented yet...!!");
+#if USE_KHEAP
+    struct Env* myenv = get_cpu_proc();
 
-	struct Env* myenv = get_cpu_proc(); //The calling environment
 
-	// This function should create the shared object at the given virtual address with the given size
-	// and return the ShareObjectID
-	// RETURN:
-	//	a) ID of the shared object (its VA after masking out its msb) if success
-	//	b) E_SHARED_MEM_EXISTS if the shared object already exists
-	//	c) E_NO_SHARE if failed to create a shared object
+    uint32 va_start = (uint32)virtual_address;
+
+    if (va_start < USER_HEAP_START || va_start >= USER_HEAP_MAX)
+        return E_NO_SHARE;
+
+
+    acquire_kspinlock(&AllShares.shareslock);
+    if (find_share(ownerID, shareName) != NULL)
+    {
+        release_kspinlock(&AllShares.shareslock);
+        return E_SHARED_MEM_EXISTS;
+    }
+    release_kspinlock(&AllShares.shareslock);
+
+    // allocate share struct only
+    struct Share* sharedObject = alloc_share(ownerID, shareName, size, isWritable);
+    if (sharedObject == NULL)
+        return E_NO_SHARE;
+
+    int numOfPages = ROUNDUP(size, PAGE_SIZE) / PAGE_SIZE;
+
+    // allocate and map frames
+    for (int i = 0; i < numOfPages; i++)
+    {
+        struct FrameInfo* frame;
+
+        int ret = allocate_frame(&frame);
+
+        if ( ret != 0)
+        {
+            // unallocate allocated
+            for (int j = 0; j < i; j++)
+            {
+                uint32 va = va_start + j * PAGE_SIZE;
+                unmap_frame(myenv->env_page_directory, va);
+                free_frame(sharedObject->framesStorage[j]);
+            }
+            kfree(sharedObject->framesStorage);
+            kfree(sharedObject);
+            return E_NO_SHARE;
+        }
+
+        sharedObject->framesStorage[i] = frame;
+
+        uint32 curVa = va_start + i * PAGE_SIZE;
+
+        uint32 perm = PERM_WRITEABLE|  PERM_USER | PERM_PRESENT | PERM_UHPAGE;
+
+        map_frame(myenv->env_page_directory, frame, curVa, perm);
+    }
+
+    //generate ID from the Share struct address
+    sharedObject->ID = ((uint32)sharedObject) & ~(1 << 31);
+
+    //insert into the list
+    acquire_kspinlock(&AllShares.shareslock);
+    LIST_INSERT_HEAD(&AllShares.shares_list, sharedObject);
+    release_kspinlock(&AllShares.shareslock);
+
+    return sharedObject->ID;
+#else
+	panic("Need USE_KHEAP = 1");
+#endif
 }
+
 
 
 //======================
@@ -140,8 +232,8 @@ int get_shared_object(int32 ownerID, char* shareName, void* virtual_address)
 	//TODO: [PROJECT'25.IM#3] SHARED MEMORY - #5 get_shared_object
 	//Your code is here
 	//Comment the following line
-	panic("get_shared_object() is not implemented yet...!!");
-
+	//panic("get_shared_object() is not implemented yet...!!");
+#if USE_KHEAP
 	struct Env* myenv = get_cpu_proc(); //The calling environment
 
 	// 	This function should share the required object in the heap of the current environment
@@ -151,6 +243,45 @@ int get_shared_object(int32 ownerID, char* shareName, void* virtual_address)
 	//	a) ID of the shared object (its VA after masking out its msb) if success
 	//	b) E_SHARED_MEM_NOT_EXISTS if the shared object is not exists
 
+	// C.S
+	acquire_kspinlock(&AllShares.shareslock);
+
+	//search in shares list
+	struct Share* sharedObject = find_share(ownerID, shareName);
+	if(sharedObject == NULL){
+		 release_kspinlock(&AllShares.shareslock);
+		return E_SHARED_MEM_NOT_EXISTS ;
+	}
+
+	 sharedObject->references++;
+
+	 release_kspinlock(&AllShares.shareslock);
+
+
+	int size = sharedObject->size;
+	int numOfFrames = ROUNDUP(size,PAGE_SIZE) / PAGE_SIZE;
+
+	// share the frames
+	for(int i = 0; i < numOfFrames ; i++){
+		struct FrameInfo *frame = sharedObject->framesStorage[i];
+
+		uint32 perms = PERM_USER | PERM_PRESENT | PERM_UHPAGE;
+
+		//check writable perm
+		if(sharedObject->isWritable){
+			perms = PERM_WRITEABLE | PERM_USER | PERM_PRESENT | PERM_UHPAGE;// writable
+		}
+
+		map_frame(myenv->env_page_directory,frame,((uint32)virtual_address + (uint32)i*PAGE_SIZE),perms);
+	}
+
+
+
+	return sharedObject->ID;
+
+#else
+	panic("Need USE_KHEAP = 1");
+#endif
 }
 
 //==================================================================================//

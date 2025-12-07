@@ -155,6 +155,7 @@ void sched_insert_ready(struct Env* env)
 	{
 		//cprintf("\nInserting %d into ready queue 0\n", env->env_id);
 		env->env_status = ENV_READY ;
+		env->start_waiting_ticks = timer_ticks();
 		enqueue(&(ProcessQueues.env_ready_queues[env->priority]), env);
 	}
 }
@@ -693,12 +694,57 @@ void env_set_priority(int envID, int priority)
 	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 env_set_priority
 	//Your code is here
 	//Comment the following line
-	panic("env_set_priority() is not implemented yet...!!");
+//	panic("env_set_priority() is not implemented yet...!!");
+#if USE_KHEAP
+	acquire_kspinlock(&(ProcessQueues.qlock));
+//	cprintf("I'm in env_set_priority\n");
+	if(priority < 0 || priority >= num_of_ready_queues)
+	{
+		panic("invalid Priority!\n");
+//		cprintf("Min: 0\nMax: %d\n",num_of_ready_queues-1);
+//		cprintf("Found Priority is: %d\n",priority);
+//		release_kspinlock(&(ProcessQueues.qlock));
+//		return;
+	}
+	struct Env* env = NULL;
+	int ret = envid2env(envID,&env,0);
+	if(ret != 0)
+	{
+		panic("Env not found!\n");
+//		cprintf("Env is not found!\n");
+//		release_kspinlock(&(ProcessQueues.qlock));
+//		return;
+	}
+
+	if(env->env_status == ENV_READY)
+	{
+		sched_remove_ready(env);
+		env->priority = priority;
+		sched_insert_ready(env);
+	}
+	else
+	{
+		env->priority = priority;
+	}
+	release_kspinlock(&(ProcessQueues.qlock));
+#endif
+
 }
+
 void sched_set_starv_thresh(uint32 starvThresh)
 {
 	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 sched_set_starv_thresh
 	//Your code is here
 	//Comment the following line
-	panic("sched_set_starv_thresh() is not implemented yet...!!");
+	// panic("sched_set_starv_thresh() is not implemented yet...!!");
+#if USE_KHEAP
+	acquire_kspinlock(&(ProcessQueues.qlock));
+//	cprintf("I'm in sched_set_starv_thresh, starvThresh = %d\n",starvThresh);
+	if(starvThresh < 0)
+	{
+		panic("Invalid value of starvThresh\n");
+	}
+	ProcessQueues.starv_thresh = starvThresh;
+	release_kspinlock(&(ProcessQueues.qlock));
+#endif
 }

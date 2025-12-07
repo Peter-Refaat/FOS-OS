@@ -26,30 +26,30 @@ void _main(void)
 	{
 		numOfRep++ ;
 		//2012: lock the interrupt
-		sys_lock_cons();
+		 sys_lock_cons();
 
-		cprintf("\n");
-		cprintf("!!!!!!!!!!!!!!!!!!!!\n");
-		cprintf("!!!! MERGE SORT !!!!\n");
-		cprintf("!!!!!!!!!!!!!!!!!!!!\n");
-		cprintf("\n");
+		 cprintf("\n");
+		 cprintf("!!!!!!!!!!!!!!!!!!!!\n");
+		 cprintf("!!!! MERGE SORT !!!!\n");
+		 cprintf("!!!!!!!!!!!!!!!!!!!!\n");
+		 cprintf("\n");
 		int NumOfElements = 800000;
-		cprintf("Enter the number of elements: %d\n", NumOfElements) ;
+		 cprintf("Enter the number of elements: %d\n", NumOfElements) ;
 
-		cprintf("Chose the initialization method:\n") ;
-		cprintf("a) Ascending\n") ;
-		cprintf("b) Descending\n") ;
-		cprintf("c) Semi random\n");
-		do
-		{
-			cprintf("Select: ") ;
-			Chose = 'c' ;
-			cputchar(Chose);
-			cputchar('\n');
-		} while (Chose != 'a' && Chose != 'b' && Chose != 'c');
+		 cprintf("Chose the initialization method:\n") ;
+		 cprintf("a) Ascending\n") ;
+		 cprintf("b) Descending\n") ;
+		 cprintf("c) Semi random\n");
+		 do
+		 {
+		 	cprintf("Select: ") ;
+		 	Chose = 'c' ;
+		 	cputchar(Chose);
+		 	cputchar('\n');
+		 } while (Chose != 'a' && Chose != 'b' && Chose != 'c');
 
-		//2012: lock the interrupt
-		sys_unlock_cons();
+		 //2012: lock the interrupt
+		 sys_unlock_cons();
 
 		//int *Elements = malloc(sizeof(int) * NumOfElements) ;
 		int *Elements = __Elements;

@@ -439,6 +439,15 @@ struct Env* env_create(char* user_program_name, unsigned int page_WS_size, unsig
 		e->prepagedVAs[w++] = ptrWSE->virtual_address;
 	}
 	assert(w == e->numOfPrepagedVAs);
+
+
+	if(isPageReplacmentAlgorithmOPTIMAL()) {
+		    struct WorkingSetElement *ptrWSE;
+		    LIST_FOREACH_SAFE(ptrWSE, &(e->page_WS_list), WorkingSetElement) {
+		    	struct WorkingSetElement *wsse = env_page_ws_list_create_element( e, ptrWSE->virtual_address);
+		        LIST_INSERT_TAIL(&(e->ActiveList), wsse);
+		    }
+		}
 #endif
 
 	//[14] Print the initial working set [for debugging]
@@ -449,6 +458,7 @@ struct Env* env_create(char* user_program_name, unsigned int page_WS_size, unsig
 		//	cprintf("Table working set after loading the program...\n");
 		//	env_table_ws_print(e);
 	}
+
 	return e;
 }
 
@@ -764,8 +774,17 @@ static int program_segment_alloc_map_copy_workingset(struct Env *e, struct Progr
 
 	*allocated_pages = 0;
 	/*2015*/// Load max of 6 pages only for the segment that start with va = 200000 [EXCEPT tpp]
-	if (iVA == 0x200000 && strcmp(e->prog_name, "tpp")!=0)
-		remaining_ws_pages = remaining_ws_pages < 6 ? remaining_ws_pages:6 ;
+//	if (iVA == 0x200000 && strcmp(e->prog_name, "tpp")!=0)
+//		remaining_ws_pages = remaining_ws_pages < 6 ? remaining_ws_pages:6 ;
+	/*==========================================================================================*/
+	/*2025*/// DON'T Load segment that start with va = 200000 since it's for debugging stab and differ from QMUE to Bochs
+	if (iVA == 0x200000)
+		remaining_ws_pages = 0 ;
+	//In [tpp or tia's]: Load max of 9 pages only for the data segments that start with va = 803000
+	if (iVA == 0x803000 && (strcmp(e->prog_name, "tpp")==0 || strcmp(e->prog_name, "tia") ==0
+			|| strcmp(e->prog_name, "tia_slave1") == 0 || strcmp(e->prog_name, "tia_slave2") == 0
+			|| strcmp(e->prog_name, "tia_slave3") == 0 || strcmp(e->prog_name, "tia_slave4") == 0))
+		remaining_ws_pages = remaining_ws_pages < 9 ? remaining_ws_pages:9;
 	/*==========================================================================================*/
 	for (; iVA < end_vaddr && i<remaining_ws_pages; i++, iVA += PAGE_SIZE)
 	{
@@ -901,14 +920,25 @@ uint32 __cur_k_stk = KERNEL_HEAP_START;
 //===========================================================
 void* create_user_kern_stack(uint32* ptr_user_page_directory)
 {
+#if USE_KHEAP
 	//TODO: [PROJECT'25.GM#3] FAULT HANDLER I - #1 create_user_kern_stack
 	//Your code is here
 	//Comment the following line
-	panic("create_user_kern_stack() is not implemented yet...!!");
+	//panic("create_user_kern_stack() is not implemented yet...!!");
 
 	//allocate space for the user kernel stack.
 	//remember to leave its bottom page as a GUARD PAGE (i.e. not mapped)
 	//return a pointer to the start of the allocated space (including the GUARD PAGE)
+	void* ptr_pt_first_page_va = kmalloc(KERNEL_STACK_SIZE);
+	if(ptr_pt_first_page_va == NULL) {
+		panic(" THERE IS NO SPACE ENOUGH TO ALLOCATE SPACE FOR USER_KERNEL STACK ");
+	}
+	pt_set_page_permissions(ptr_user_page_directory, (uint32) ptr_pt_first_page_va, 0, PERM_PRESENT);
+	return ptr_pt_first_page_va;
+#else
+	panic("KERNEL HEAP is OFF! user kernel stack can't be created");
+	return NULL;
+#endif
 }
 
 /*2024*/

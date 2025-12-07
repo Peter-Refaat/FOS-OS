@@ -145,35 +145,70 @@ void* sys_sbrk(int numOfPages)
 //=====================================
 // 1) ALLOCATE USER MEMORY:
 //=====================================
-void allocate_user_mem(struct Env* e, uint32 virtual_address, uint32 size)
-{
-	/*====================================*/
-	/*Remove this line before start coding*/
-//		inctst();
-//		return;
-	/*====================================*/
+void allocate_user_mem(struct Env* e, uint32 va, uint32 size) {
+    uint32 startVa = ROUNDDOWN(va, PAGE_SIZE);
+    uint32 endVa   = ROUNDUP(va + size, PAGE_SIZE);
 
-	//TODO: [PROJECT'25.IM#2] USER HEAP - #2 allocate_user_mem
-	//Your code is here
-	//Comment the following line
-	panic("allocate_user_mem() is not implemented yet...!!");
+    for (uint32 currPageVa = startVa; currPageVa < endVa; currPageVa += PAGE_SIZE) {
+        uint32* pageTable = NULL;
+
+        // Create page table if it doesn't exist
+        if (get_page_table(e->env_page_directory, currPageVa, &pageTable) == TABLE_NOT_EXIST) {
+
+            pageTable = create_page_table(e->env_page_directory, currPageVa);
+            if (pageTable == NULL) {
+                panic("couldn't create page table");
+            }
+        }
+
+        pt_set_page_permissions(e->env_page_directory, currPageVa, PERM_UHPAGE, PERM_PRESENT);
+    }
 }
 
 //=====================================
 // 2) FREE USER MEMORY:
 //=====================================
-void free_user_mem(struct Env* e, uint32 virtual_address, uint32 size)
+void free_user_mem(struct Env* e, uint32 va, uint32 size)
 {
-	/*====================================*/
-	/*Remove this line before start coding*/
-//		inctst();
-//		return;
-	/*====================================*/
+    // Round to page boundaries
+    uint32 start_va = ROUNDDOWN(va, PAGE_SIZE);
+    uint32 end_va = ROUNDUP(va + size, PAGE_SIZE);
 
-	//TODO: [PROJECT'25.IM#2] USER HEAP - #4 free_user_mem
-	//Your code is here
-	//Comment the following line
-	panic("free_user_mem() is not implemented yet...!!");
+    // Iterate through each page in the range
+    for (uint32 curr_va = start_va; curr_va < end_va; curr_va += PAGE_SIZE)
+    {
+        uint32* page_table = NULL;
+
+        // Check if page table exists for this address
+        if (get_page_table(e->env_page_directory, curr_va, &page_table) == TABLE_IN_MEMORY)
+        {
+            // Get current permissions to check if page is present
+            uint32 perms = pt_get_page_permissions(e->env_page_directory, curr_va);
+
+            // 1. UNMARK: Clear PERM_UHPAGE to indicate NOT reserved
+            pt_set_page_permissions(e->env_page_directory, curr_va, 0, PERM_UHPAGE);
+
+            // 2. FREE FROM PAGE FILE: Remove ALL pages in range from disk
+            pf_remove_env_page(e, curr_va);
+
+            // 3. FREE FROM MEMORY: ONLY if resident in working set
+            if (perms & PERM_PRESENT)
+            {
+                // Page is in memory - remove from WS and unmap
+                // env_page_ws_invalidate() does:
+                //   - Removes from working set list
+                //   - Unmaps the page (clears page table entry)
+                //   - Frees the frame
+                env_page_ws_invalidate(e, curr_va);
+            }
+            else
+            {
+                // Page is NOT in memory (was only marked, never accessed)
+                // Just clear the page table entry
+                pt_clear_page_table_entry(e->env_page_directory, curr_va);
+            }
+        }
+    }
 }
 
 //=====================================

@@ -523,6 +523,13 @@ void sys_bypassPageFault(uint8 instrLength)
 	bypassInstrLength = instrLength;
 }
 
+void sys_env_set_priority(int32 envID , int priority)
+{
+//	acquire_kspinlock(&(ProcessQueues.qlock));
+//	cprintf("I'm calling env_set_priority from sys_env_set_priority\n");
+	env_set_priority(envID, priority);
+//	release_kspinlock(&(ProcessQueues.qlock));
+}
 
 /**************************************************************************/
 /************************* SYSTEM CALLS HANDLER ***************************/
@@ -541,8 +548,20 @@ uint32 syscall(uint32 syscallno, uint32 a1, uint32 a2, uint32 a3, uint32 a4, uin
 	/*2023*/
 	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 System Calls - Add suitable code here
 	//Your code is here
-
+	case SYS_env_set_priority:
+		sys_env_set_priority(a1,a2);
+		return 0;
+		break;
 	//=============================================
+	case SYS_allocate_user_mem:
+		sys_allocate_user_mem(a1, a2);
+		return 0;
+		break;
+	case SYS_free_user_mem:
+		sys_free_user_mem(a1, a2);
+		return 0;
+		break;
+
 	case SYS_cputs:
 		sys_cputs((const char*)a1,a2,(uint8)a3, a4);
 		return 0;
